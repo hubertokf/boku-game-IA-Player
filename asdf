@@ -1,0 +1,498 @@
+package main
+
+import (
+	"fmt"
+	"log"
+	"time"
+	_ "os"
+
+	"encoding/json"
+	"io/ioutil"
+	"net/http"
+	"strings"
+	"strconv"
+)
+
+var player = 1
+var oponent = 2
+
+type Node struct {
+	movement []int
+	board    [][]int
+	heuristic int
+}
+
+func (n Node) set_data(data []int, board [][]int) {
+	n.movement = data
+	n.board = board
+}
+
+func (n Node) get_data() []int {
+	return n.movement
+}
+
+func (n Node) set_board(data [][]int) {
+	n.board = data
+}
+
+func (n Node) get_board() [][]int {
+	return n.board
+}
+
+func get_player() int {
+	resp, _ := http.Get("http://localhost:8080/jogador")
+
+	// Sinaliza que a última ação a ser feita no programa é o fechamento da resposta
+	defer resp.Body.Close()
+
+	// Por fim escreve o conteúdo do feed de rss
+	bodyBytes, _ := ioutil.ReadAll(resp.Body)
+
+	// Converte a lista para string e após inteiro
+	// Rever a possibilidade de converter BYTES para INTEIRO
+	aByteToInt, _ := strconv.Atoi(string(bodyBytes))
+	// fmt.Println(aByteToInt)
+
+	return aByteToInt
+}
+
+func get_board() [][]int {
+	var jsonstring string
+	var listoflists [][]int
+
+	resp, _ := http.Get("http://localhost:8080/tabuleiro")
+
+	// Sinaliza que a última ação a ser feita no programa é o fechamento da resposta
+	defer resp.Body.Close()
+
+	// Por fim escreve o conteúdo do feed de rss
+	bodyBytes, _ := ioutil.ReadAll(resp.Body)
+	jsonstring = string(bodyBytes)
+
+	dec := json.NewDecoder(strings.NewReader(jsonstring))
+	dec.Decode(&listoflists)
+
+	return listoflists
+}
+
+func sub_board(listoflists [][]int) [][]int {
+
+	for x, list := range listoflists {
+		// fmt.Println(list)
+		for y, value := range list {
+			// fmt.Println(value)
+			if value == 0 {
+				// fmt.Println("ZERO")
+				listoflists[x][y] = 1
+			}
+		}
+	}
+	return listoflists
+
+}
+
+func copy_board(listoflists [][]int) [][]int {
+
+	var board [][]int = make([][]int, len(listoflists))
+
+	for x, list := range listoflists {
+		board[x] = make([]int, len(list))
+		for y, value := range list {
+			board[x][y] = value
+			// fmt.Println(x, y, value)
+		}
+	}
+	return board
+}
+
+func get_movements() [][]int {
+	var jsonstring string
+	var listoflists [][]int
+
+	resp, _ := http.Get("http://localhost:8080/movimentos")
+
+	// Sinaliza que a última ação a ser feita no programa é o fechamento da resposta
+	defer resp.Body.Close()
+
+	// Por fim escreve o conteúdo do feed de rss
+	bodyBytes, _ := ioutil.ReadAll(resp.Body)
+	jsonstring = string(bodyBytes)
+
+	jsonstring = strings.Replace(jsonstring, "(", "[", -1)
+	jsonstring = strings.Replace(jsonstring, ")", "]", -1)
+
+	dec := json.NewDecoder(strings.NewReader(jsonstring))
+	dec.Decode(&listoflists)
+
+	return listoflists
+}
+
+func heuristic(board [][]int, position []int) int {
+	// var counter int{0}
+	counter := 0
+	v := vizinhos(board, position)
+	// fmt.Println(position, l)
+
+	for _, vizinho := range v {
+		// fmt.Println(vizinho)
+		//for vizinho := 0; vizinho < len(l); vizinho++ {
+		if board[vizinho[0]][vizinho[1]] == 0 {
+			counter = counter + 10
+		}
+		if board[vizinho[0]][vizinho[1]] == 1 { // VERIFICAR o 1
+			counter = counter + 20
+		}
+		if board[vizinho[0]][vizinho[1]] == 2 {
+			counter = counter - 10
+		}
+
+		//}
+	}
+	return counter
+}
+
+func vizinhos(board [][]int, pos []int) [][]int {
+	column := pos[0]
+	line := pos[1]
+
+	var position []int
+	var l [][]int
+
+	if line < len(board[column])-1 { // DOWN
+		position = []int{column, line + 1}
+		l = append(l, position)
+	}
+
+	if column <= len(board)-1 && column != 0 { // DIAGONAL L/D
+		// fmt.Println("L/D")
+		if line != len(board[column])-1 && column < 6 {
+			position = []int{column - 1, line}
+			l = append(l, position)
+		} else if column >= 6 {
+			position = []int{column - 1, line + 1}
+			l = append(l, position)
+		}
+	}
+
+	if column <= len(board)-1 && column != 0 { // DIAGONAL L/U
+		// fmt.Println("L/U")
+		if column < 6 && line != 0 {
+			position = []int{column - 1, line - 1}
+			l = append(l, position)
+		} else if column >= 6 {
+			position = []int{column - 1, line}
+			l = append(l, position)
+		}
+	}
+
+	if line != 0 {
+		position = []int{column, line - 1} // UP
+		l = append(l, position)
+	}
+
+	if column < len(board)-1 { // DIAGONAL R/U
+		// fmt.Println("DIAGONAL D/U")
+		if column < 5 {
+			position = []int{column + 1, line}
+			l = append(l, position)
+		} else if column >= 5 && line != 0 {
+			position = []int{column + 1, line - 1}
+			l = append(l, position)
+		}
+	}
+
+	if column < len(board)-1 { // DIAGONAL R/D
+		// fmt.Println("DIAGONAL R/D")
+		if column < 5 {
+			position = []int{column + 1, line + 1}
+			l = append(l, position)
+		} else if column >= 5 && line != len(board[column+1]) {
+			position = []int{column + 1, line}
+			l = append(l, position)
+		}
+	}
+
+	return l
+
+}
+
+func nei(board [][]int, pos []int) [][]int {
+	column := pos[0]
+	line := pos[1]
+
+	var position []int
+	var l [][]int
+
+	if line == 0 && column > 0 && column < len(board)-1 {
+		if column < 5 {
+			position = []int{column + 1, line + 1}
+			l = append(l, position)
+			position = []int{column + 1, line}
+			l = append(l, position)
+
+			position = []int{column, line + 1}
+			l = append(l, position)
+
+			position = []int{column - 1, line}
+			l = append(l, position)
+
+		} else if column > 5 {
+			position = []int{column - 1, line + 1}
+			l = append(l, position)
+			position = []int{column - 1, line}
+			l = append(l, position)
+
+			position = []int{column, line + 1}
+			l = append(l, position)
+
+			position = []int{column + 1, line}
+			l = append(l, position)
+
+		} else {
+			position = []int{column - 1, line}
+			l = append(l, position)
+			position = []int{column, line + 1}
+			l = append(l, position)
+			position = []int{column + 1, line}
+			l = append(l, position)
+		}
+	} else if column == 0 {
+		position = []int{column + 1, line}
+		l = append(l, position)
+
+		position = []int{column + 1, line + 1}
+		l = append(l, position)
+
+		if line < len(board[column])-1 && line > 0 {
+			position = []int{column, line + 1}
+			l = append(l, position)
+
+			position = []int{column, line - 1}
+			l = append(l, position)
+
+		} else if line < len(board[column])-1 {
+			position = []int{column, line + 1}
+			l = append(l, position)
+		} else if line > 0 {
+			position = []int{column, line - 1}
+			l = append(l, position)
+		}
+
+	} else if column == len(board)-1 {
+		position = []int{column - 1, line + 1}
+		l = append(l, position)
+
+		position = []int{column - 1, line}
+		l = append(l, position)
+
+		if line < len(board[column])-1 && line > 0 {
+			position = []int{column, line + 1}
+			l = append(l, position)
+
+			position = []int{column, line - 1}
+			l = append(l, position)
+		} else if line < len(board[column])-1 {
+			position = []int{column, line + 1}
+			l = append(l, position)
+		} else if line > 0 {
+			position = []int{column, line - 1}
+			l = append(l, position)
+		}
+
+	} else if line == len(board[column])-1 && column > 0 && column < len(board)-1 {
+
+		if column < 5 {
+			position = []int{column + 1, line + 1}
+			l = append(l, position)
+			position = []int{column, line - 1}
+			l = append(l, position)
+
+			position = []int{column + 1, line}
+			l = append(l, position)
+
+			// position = []int{column - 1, line - 1}
+			// l = append(l, position)
+
+			position = []int{column - 1, line - 1}
+			l = append(l, position)
+		} else if column > 5 {
+			position = []int{column - 1, line + 1}
+			l = append(l, position)
+			position = []int{column, line - 1}
+			l = append(l, position)
+
+			position = []int{column + 1, line - 1}
+			l = append(l, position)
+
+			// position = []int{column - 1, line - 1}
+			// l = append(l, position)
+
+			position = []int{column - 1, line}
+			l = append(l, position)
+		} else {
+			position = []int{column - 1, line - 1}
+			l = append(l, position)
+			position = []int{column, line - 1}
+			l = append(l, position)
+			position = []int{column + 1, line - 1}
+			l = append(l, position)
+		}
+	} else {
+		if column < 5 {
+			position = []int{column, line - 1}
+			l = append(l, position)
+
+			position = []int{column, line + 1}
+			l = append(l, position)
+
+			position = []int{column + 1, line + 1}
+			l = append(l, position)
+
+			position = []int{column - 1, line - 1}
+			l = append(l, position)
+
+			position = []int{column + 1, line}
+			l = append(l, position)
+
+			position = []int{column - 1, line}
+			l = append(l, position)
+
+		} else if column == 5 {
+			position = []int{column, line - 1}
+			l = append(l, position)
+
+			position = []int{column, line + 1}
+			l = append(l, position)
+
+			position = []int{column + 1, line - 1}
+			l = append(l, position)
+
+			position = []int{column - 1, line - 1}
+			l = append(l, position)
+
+			position = []int{column + 1, line}
+			l = append(l, position)
+
+			position = []int{column - 1, line}
+			l = append(l, position)
+		} else {
+			position = []int{column, line - 1}
+			l = append(l, position)
+
+			position = []int{column, line + 1}
+			l = append(l, position)
+
+			position = []int{column + 1, line - 1}
+			l = append(l, position)
+
+			position = []int{column - 1, line + 1}
+			l = append(l, position)
+
+			position = []int{column + 1, line}
+			l = append(l, position)
+
+			position = []int{column - 1, line}
+			l = append(l, position)
+		}
+	}
+	return l
+}
+
+func leaf_generating_matrix(board [][]int, level int) []Node {
+	// var x, y, counter, x_size_table, y_size_table //int
+	x_size_table, y_size_table := 0, 0
+
+	list_leaf := []Node{}
+	var aux_board [][]int
+	x_size_table = len(board)
+
+	for x := 0; x < x_size_table; x++ {
+		y_size_table = len(board[x])
+
+		for y := 0; y < y_size_table; y++ {
+			if board[x][y] == 0 {
+				aux_board = copy_board(board)
+
+				if level%2 == 0 {
+					aux_board[x][y] = player
+				} else {
+					aux_board[x][y] = oponent
+				}
+				position := []int{x, y}
+
+				leaf.set_data(position, aux_board)
+
+				heuristic_value := heuristic(aux_board, position)
+
+				leaf := Node{position, aux_board, heuristic_value}
+
+				list_leaf = append(list_leaf, leaf)
+				//======================================
+
+				//is_final_state(aux_board)
+			}
+		}
+	}
+
+	return list_leaf
+}
+
+func leafs_generating_matrix(father []Node, depth int) {
+	for level := 0; level < depth; level++ {
+		size_list_father := len(father)
+
+		for x := 0; x < size_list_father; x++ {
+			board := father[0]
+			copy(father, father[1:])
+			father = father[:len(father)-1]
+
+			aux := leaf_generating_matrix(board.get_board(), level)
+
+			father = append(father, aux...)
+		}
+	}
+	//fmt.Println(father[0].get_board())
+}
+
+func play() {
+	var board, movements [][]int
+
+	for {
+
+		if jogador == get_player() {
+			movements = get_movements()
+			if len(movements) > 2 {
+				position := []int{0, 0}
+
+				board = get_board()
+				father := Node{position, board, 0}
+
+				leafs_generating_matrix([]Node{father}, 2)
+
+			} else {
+				fmt.Println("...")
+			}
+			time.Sleep(2 * time.Second)
+		}
+	}
+}
+
+func main() {
+
+	// var aux_board [][]int
+
+	// board := board()
+	// fmt.Println("Tabela Original:\n ", board)
+
+	// aux_board := copy_board(board)
+	// sub_board := sub_board(board)
+
+	// fmt.Println("Tabela Copiada:\n ", aux_board)
+	// fmt.Println("Tabela Modificada:\n ", sub_board)
+
+	// player, _ = strconv.Atoi(os.Args[1])
+	start := time.Now()
+	play()
+	elapsed := time.Since(start)
+	log.Printf("Time %s", elapsed)
+}
