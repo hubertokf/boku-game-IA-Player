@@ -1,0 +1,3 @@
+[submodule "boku-engine"]
+	path = boku-engine
+	url = https://github.com/ricardoaraujo/boku-engine.git
