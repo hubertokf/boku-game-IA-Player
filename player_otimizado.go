@@ -3,13 +3,14 @@ package main
 import (
 	"fmt"
 	"strconv"
-	_ "time"
-	_ "log"
+	"time"
+	"log"
 	"io/ioutil"
 	"net/http"
 	"encoding/json"
 	"strings"
-	_ "os"
+	"os"
+	"sync"
 )
 
 
@@ -32,19 +33,30 @@ type Node struct {
 	Movement Coord
 }
 
-func (node *Node) AddTerminal(score int, data [][]int, movement Coord) {
-	node.add(&score, data, movement)
+func (node *Node) AddTerminal(score int, data [][]int, movement Coord) *Node {
+	return node.add(&score, data, movement)
 }
 
-func (node *Node) Add(data [][]int, movement Coord) {
-	node.add(nil, data, movement)
+func (node *Node) Add(data [][]int, movement Coord) *Node {
+	return node.add(nil, data, movement)
 }
 
-func (node *Node) add(score *int, data [][]int, movement Coord) {
+func (node *Node) add(score *int, data [][]int, movement Coord) *Node {
 	childNode := Node{parent: node, Score: score, Data: data, Movement: movement}
 
 	childNode.isOpponent = !node.isOpponent
 	node.children = append(node.children, &childNode)
+
+	return &childNode
+}
+
+func copy_board(board [][]int) [][]int {
+	duplicate := make([][]int, len(board))
+	for i := range board {
+		duplicate[i] = make([]int, len(board[i]))
+		copy(duplicate[i], board[i])
+	}
+	return duplicate
 }
 
 func (node *Node) neighbors(pos Coord) []Coord {
@@ -108,7 +120,6 @@ func (node *Node) neighbors(pos Coord) []Coord {
 
 func (node *Node) find_vertical(sequence string) bool{
 	for _, column := range node.Data {
-		fmt.Println(column)
 		var s string
 		for _, cell := range column {
 			s += strconv.Itoa(cell)
@@ -147,101 +158,73 @@ func (node *Node) find_up_diagonal(sequence string) bool{
 }
 
 func (node *Node) find_down_diagonal(sequence string) bool{
+	// Posições das diagonais descendentes
 	diags := []Coord{{5, 0}, {4, 0}, {3, 0}, {2, 0}, {1, 0}, {0, 0}, {0, 1}, {0, 2}, {0, 3}, {0, 4}}
+	
+	// limite do final da matriz
+	lim := 10
+	k := 0
+
+	// Percorre cada uma das posições das diagonais descendentes - mandinga
 	for _, coords := range diags {
 		var s string
-		for &coords != nil{
-			column := coords.x
-			line := coords.y
-			state := node.Data[column - 1][line - 1]
-			s += string(state)
+		i := k
 
+		if coords.x == 0{
+			lim--
+			k++
+		}
+
+		for cel := coords.x; cel <= lim; cel++ {
+			
+			if cel < 5{
+				s += strconv.Itoa(node.Data[cel][i])
+				i++
+			}else{
+				s += strconv.Itoa(node.Data[cel][i])
+			}
 			if strings.Contains(s, sequence){
 				return true
 			}
-			
-			coords = node.neighbors(coords)[4]
 		}
 	}
 	return false
 }
 
-func (node *Node) final_State() bool {
+func (node *Node) is_final_State(player int) bool {
+	var sequence string
+	if player == 1{
+		sequence = "11111"
+	}else{
+		sequence = "22222"
+	}
+	if node.find_vertical(sequence) || node.find_up_diagonal(sequence) || node.find_down_diagonal(sequence){
+		return true
+	}
 	return false
 }
 
-func (node *Node) heuristic(position Coord) int {
+func (node *Node) heuristic(player int) int {
 	counter := 0
-	v := node.neighbors(position)
-
-	for k := 0; k < len(v); k++ {
-		if node.Data[v[k].x][v[k].y] == 0 {
-			counter = counter + 10
+	for i:=5; i>=4; i-- {
+		// fmt.Println(i)
+		sequence := strings.Repeat(strconv.Itoa(player), i)
+		if node.find_vertical(sequence){
+			counter += i*2
 		}
-		if node.Data[v[k].x][v[k].y] == 1 { // VERIFICAR o 1
-			counter = counter + 20
+		if node.find_up_diagonal(sequence){
+			counter += i*2
 		}
-		if node.Data[v[k].x][v[k].y] == 2 {
-			counter = counter - 50
-		}
+		if node.find_down_diagonal(sequence){
+			counter += i*2
+		} 
 	}
-	// node.Score = counter
+
+	node.Score = &counter
 	return counter
 }
 
-func (node *Node) Evaluate(plies int, player int, remove bool) {
-	eval := false
-	if plies == 0{
-		eval = true
-	}
-	node.generateChilds(player,eval)
-	children_size := len(node.children)
-	for k := 0; k < children_size; k++ {
-		// fmt.Println(node.children[k])
-		if plies != 0 {
-			if player == 1{
-				player = 2
-			}else{
-				player = 1
-			}
-			node.children[k].Evaluate(plies-1, player, true)
-		}
-
-		if node.children[k].parent.Score == nil {
-			node.children[k].parent.Score = node.children[k].Score
-		} else if node.children[k].isOpponent && *node.children[k].Score > *node.children[k].parent.Score {
-			node.children[k].parent.Score = node.children[k].Score
-		} else if !node.children[k].isOpponent && *node.children[k].Score < *node.children[k].parent.Score {
-			node.children[k].parent.Score = node.children[k].Score
-		}
-
-		if remove == true{
-			node.children[k] = nil
-		}
-	}
-}
-
-func copy_board(board [][]int) [][]int {
-	duplicate := make([][]int, len(board))
-	for i := range board {
-		duplicate[i] = make([]int, len(board[i]))
-		copy(duplicate[i], board[i])
-	}
-	
-	// n := len(board)
-	// m := len(board[4])
-	// duplicate := make([][]int, n)
-	// data := make([]int, n*m)
-	// for i := range board {
-	// 	start := i*m
-	// 	end := start + m
-	// 	duplicate[i] = data[start:end:end]
-	// 	copy(duplicate[i], board[i])
-	// }
-	return duplicate
-}
-
-func (node *Node) generateChilds(player int, eval bool) {
+func (node *Node) generateChilds(player int) {
 	data_size := len(node.Data)
 	for col := 0; col < data_size; col++ {
 		col_size := len(node.Data[col])
@@ -249,19 +232,55 @@ func (node *Node) generateChilds(player int, eval bool) {
 			if node.Data[col][cell] == 0 {
 				copy := copy_board(node.Data)
 				copy[col][cell] = player
-				
-				if eval == true {
-					score := node.heuristic(Coord{col,cell})
-					node.AddTerminal(score, copy, Coord{col,cell})
-				}else{
-					node.Add(copy, Coord{col,cell})
-				}
+
+				node.Add(copy, Coord{col,cell})
 
 			}
 		}
 	}
 
 	// return node
+}
+
+func (node *Node) Evaluate(plies int, player int, remove bool) {
+
+	node.generateChilds(player)
+
+	if player == 1{
+		player = 2
+	}else{
+		player = 1
+	}
+
+	children_size := len(node.children)
+	var wg sync.WaitGroup
+	wg.Add(children_size)
+
+	for k := 0; k < children_size; k++ {
+		go func(k int) {
+			if plies != 0 {
+
+				node.children[k].Evaluate(plies-1, player, true)
+			}else{
+				node.children[k].heuristic(player)
+			}
+
+			if node.children[k].parent.Score == nil {
+				node.children[k].parent.Score = node.children[k].Score
+			} else if node.children[k].isOpponent && *node.children[k].Score > *node.children[k].parent.Score {
+				node.children[k].parent.Score = node.children[k].Score
+			} else if !node.children[k].isOpponent && *node.children[k].Score < *node.children[k].parent.Score {
+				node.children[k].parent.Score = node.children[k].Score
+			}
+
+			if remove == true{
+				node.children[k] = nil
+			}
+			defer wg.Done()
+		}(k)
+	}
+
+	wg.Wait()
 }
 
 func http_get(dir string) string {
@@ -292,6 +311,10 @@ func get_board() [][]int {
 	return board
 }
 
+func restart_board() {
+	http_get("reiniciar")
+}
+
 func get_movements() [][]int {
 	var movements [][]int
 
@@ -312,63 +335,61 @@ func make_move(player int, movement Coord) string {
 
 func (node *Node) GetBestChildNode() *Node {
 	children_size := len(node.children)
+	var child *Node
 	for k := 0; k < children_size; k++ {
-		if node.children[k].Score == node.Score {
-			return node.children[k]
+		if *node.children[k].Score > *node.Score {
+			child = node.children[k]
+		}else{
+			child = node.children[children_size/2]
 		}
 	}
 
-	return nil
+	return child
 }
 
 func main() {
-	// player := 1
-	// if len(os.Args) > 1 {
-	// 	player, _ = strconv.Atoi(os.Args[1])
-	// }
+	player := 1
+	plies :=1
+	if len(os.Args) > 1 {
+		player, _ = strconv.Atoi(os.Args[1])
+	}
+	if len(os.Args) > 2 {
+		plies, _ = strconv.Atoi(os.Args[2])
+	}
+	// restart_board()
 	
 	// go http.ListenAndServe(":8000", http.DefaultServeMux)
 	
-	board := get_board()
-	tree := Node{Data:board}
-
-	fmt.Println("vertical: ", tree.find_vertical("1111"))
-	fmt.Println("up diagonal: ", tree.find_up_diagonal("1111"))
-	fmt.Println("down diagonal: ", tree.find_down_diagonal("1111"))
-
-
-	// for {
+	for {
 		
-	// 	if player == get_player() {
-	// 		start := time.Now()
+		if player == get_player() {
+			start := time.Now()
 
-	// 		movements := get_movements()
-	// 		if len(movements) > 2 {
+			movements := get_movements()
+			if len(movements) > 2 {
 
-	// 			board := get_board()
-	// 			tree := Node{Data:board}
+				board := get_board()
+				tree := Node{Data:board, isOpponent: true}
 
-	// 			tree.Evaluate(3, player, false)
-	// 			e := tree.GetBestChildNode()
+				tree.Evaluate(plies, player, false)
+				// fmt.Println(tree)
+				e := tree.GetBestChildNode()
+				fmt.Println(*e.Score)
 
-	// 			fmt.Println(e.Data)
-	// 			fmt.Println(e.Movement)
-	// 			fmt.Println(e.neighbors(e.Movement))
+				// fmt.Println(*e.Score)
 				
-	// 			tree.heuristic(e.Movement)
-				
-	// 			res := make_move(player, e.Movement)
-	// 			fmt.Println(res)
-	// 		} else {
-	// 			fmt.Println("...")
-	// 		}
+				res := make_move(player, e.Movement)
+				fmt.Println(res)
+			} else {
+				fmt.Println("...")
+			}
 
-	// 		elapsed := time.Since(start)
-	// 		log.Printf("Time %s", elapsed)
+			elapsed := time.Since(start)
+			log.Printf("Time %s", elapsed)
 
-	// 		time.Sleep(2 * time.Second)
-	// 	}
-	// }
+			time.Sleep(2 * time.Second)
+		}
+	}
 	
 }
 
@@ -397,3 +418,4 @@ func main() {
 //    [0 0 0 0 0 0 0]
 //     [0 0 0 0 0 0]
 //      [0 0 0 0 0]
+
