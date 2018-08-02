@@ -150,13 +150,13 @@ func (node *Node) block_oponnent_gap(player int) int {
 	}
 	for _, sequence := range sequences {
 		if node.find_vertical(sequence){
-			counter += 1500
+			counter += 3000
 		}
 		if node.find_up_diagonal(sequence){
-			counter += 1500
+			counter += 3000
 		}
 		if node.find_down_diagonal(sequence){
-			counter += 1500
+			counter += 3000
 		}
 	}
 	return counter
@@ -522,7 +522,7 @@ func (node *Node) GetBestChildNode() *Node {
 
 func main() {
 	player := 1
-	plies := 2
+	plies := 3
 	if len(os.Args) > 1 {
 		player, _ = strconv.Atoi(os.Args[1])
 	}
